@@ -32,25 +32,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Offer(BaseModel):
-    name: str
-    description: str
-    # Adicione mais campos aqui conforme necessário
+# class Offer(BaseModel):
+#     name: str
+#     description: str
+#     # Adicione mais campos aqui conforme necessário
 
-@app.post("/offers/")
-async def create_offer(offer: Offer):
-    offer_dict = offer.dict()
-    result = await offers_collection.insert_one(offer_dict)
-    offer_dict["_id"] = str(result.inserted_id)
-    return offer_dict
+# @app.post("/offers/")
+# async def create_offer(offer: Offer):
+#     offer_dict = offer.dict()
+#     result = await offers_collection.insert_one(offer_dict)           # Used just for testing
+#     offer_dict["_id"] = str(result.inserted_id)
+#     return offer_dict
 
-@app.get("/offers/", response_model=List[Offer])
-async def read_offers():
-    offers = []
-    for offer in await offers_collection.find().to_list(length=100):
-        offer["_id"] = str(offer["_id"])
-        offers.append(offer)
-    return offers
+# @app.get("/offers/", response_model=List[Offer])
+# async def read_offers():
+#     offers = []
+#     for offer in await offers_collection.find().to_list(length=100):
+#         offer["_id"] = str(offer["_id"])
+#         offers.append(offer)
+#     return offers
 
 
 app.include_router(api_router, prefix="/api")
