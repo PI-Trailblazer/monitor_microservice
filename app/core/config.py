@@ -52,5 +52,12 @@ class Settings(BaseSettings):
         f":{MONGO_PASSWORD}@{MONGO_SERVER}" \
         f":27017/{MONGO_DB}_test??authSource=admin"
     
+    # RabbitMQ
+    RABBITMQ_HOST: str = os.getenv('RABBITMQ_HOST', 'rabbitmq')
+    RABBITMQ_PORT: int = os.getenv('RABBITMQ_PORT', 5672)
+    RABBITMQ_VIRTUAL_HOST: str = os.getenv('RABBITMQ_VIRTUAL_HOST', '/')
+    RABBITMQ_USERNAME: str = os.getenv('RABBITMQ_USERNAME', 'user')
+    RABBITMQ_PASSWORD: str = os.getenv('RABBITMQ_PASSWORD', 'user')
+    
 
 settings = Settings()
