@@ -1,15 +1,11 @@
-import asyncio
-from contextlib import asynccontextmanager
 from threading import Thread
 
-import pika
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from loguru import logger
 
 from app.api import router as api_router
 from app.core.config import settings
-from app.db.init_db import get_db, offers_collection
+from app.db.init_db import get_db
 from app.rabbitmq.handler import consume_messages
 
 app = FastAPI(
