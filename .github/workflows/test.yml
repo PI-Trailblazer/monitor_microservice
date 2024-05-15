@@ -1,0 +1,38 @@
+name: Test
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Setup poetry
+        run: |
+          pip install --upgrade pip setuptools
+          pip install poetry
+      - name: Install tox and any other packages
+        run: poetry install --no-interaction
+      - name: Setup docker
+        run: docker compose -f compose.test.yml up -d
+      - name: Run tox
+        run: poetry run tox -e coverage
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_SCANNER_OPTS: -Dsonar.python.coverage.reportPaths=coverage.xml
+      - name: Cleanup docker
+        run: docker compose -f compose.test.yml down
