@@ -34,30 +34,37 @@ class Settings(BaseSettings):
         elif isinstance(v, (list, str)):
             return v
         raise ValueError(v)
-    
+
     # MongoDB
 
-    MONGO_SERVER: str = os.getenv('MONGO_SERVER', 'localhost')
-    MONGO_USER: str = os.getenv('MONGO_USER', "mongo")
-    MONGO_PASSWORD: str = os.getenv('MONGO_PASSWORD', "mongo")
-    MONGO_DB: str = os.getenv('MONGO_DB', "monitor_db")
-    MONGO_URI: Optional[
-        MongoDsn
-    ] = f"mongodb://{MONGO_USER}" \
-        f":{MONGO_PASSWORD}@{MONGO_SERVER}" \
+    MONGO_SERVER: str = os.getenv("MONGO_SERVER", "localhost")
+    MONGO_USER: str = os.getenv("MONGO_USER", "mongo")
+    MONGO_PASSWORD: str = os.getenv("MONGO_PASSWORD", "mongo")
+    MONGO_DB: str = os.getenv("MONGO_DB", "monitor_db")
+    MONGO_URI: Optional[MongoDsn] = (
+        f"mongodb://{MONGO_USER}"
+        f":{MONGO_PASSWORD}@{MONGO_SERVER}"
         f":27017/{MONGO_DB}?authSource=admin"
-    TEST_MONGO_URI: Optional[
-        MongoDsn
-    ] = f"mongodb://{MONGO_USER}" \
-        f":{MONGO_PASSWORD}@{MONGO_SERVER}" \
+    )
+    TEST_MONGO_URI: Optional[MongoDsn] = (
+        f"mongodb://{MONGO_USER}"
+        f":{MONGO_PASSWORD}@{MONGO_SERVER}"
         f":27017/{MONGO_DB}_test??authSource=admin"
-    
+    )
+
     # RabbitMQ
-    RABBITMQ_HOST: str = os.getenv('RABBITMQ_HOST', 'rabbitmq')
-    RABBITMQ_PORT: int = os.getenv('RABBITMQ_PORT', 5672)
-    RABBITMQ_VIRTUAL_HOST: str = os.getenv('RABBITMQ_VIRTUAL_HOST', '/')
-    RABBITMQ_USERNAME: str = os.getenv('RABBITMQ_USERNAME', 'user')
-    RABBITMQ_PASSWORD: str = os.getenv('RABBITMQ_PASSWORD', 'user')
-    
+    RABBITMQ_HOST: str = os.getenv("RABBITMQ_HOST", "rabbitmq")
+    RABBITMQ_PORT: int = os.getenv("RABBITMQ_PORT", 5672)
+    RABBITMQ_VIRTUAL_HOST: str = os.getenv("RABBITMQ_VIRTUAL_HOST", "/")
+    RABBITMQ_USERNAME: str = os.getenv("RABBITMQ_USERNAME", "user")
+    RABBITMQ_PASSWORD: str = os.getenv("RABBITMQ_PASSWORD", "user")
+
+    # JWT
+    JWT_SECRET_KEY_PATH: str = "./dev-keys/jwt-key"
+    JWT_PUBLIC_KEY_PATH: str = "./dev-keys/jwt-key.pub"
+    ACCESS_TOKEN_EXPIRE_MINUTES: timedelta = timedelta(hours=1)
+    REFRESH_TOKEN_EXPIRE_MINUTES: timedelta = timedelta(days=7)
+    JWT_ALGORITHM: str = "RS256"
+
 
 settings = Settings()
