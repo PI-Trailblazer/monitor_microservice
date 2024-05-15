@@ -1,4 +1,22 @@
 services:
+  mongo_db:
+    image: mongo:latest
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: mongo_test
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
   monitor_microservice:
     build:
       context: .
@@ -7,7 +25,7 @@ services:
     volumes:
       - .:/monitor_microservice
     depends_on:
-      db_pg:
+      mongo_db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -32,7 +50,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  pg_data:
+  mongo_data:
     driver: local
   rabbitmq-data:
     driver: local
