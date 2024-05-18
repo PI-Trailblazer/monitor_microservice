@@ -45,8 +45,29 @@ async def get_total_number_of_offers_variation_since_last_month():
 
     return count_today - count_last_month
 
+# returns the number of offers by tag
+@router.get("/number_of_offers_by_tag")
+def get_offers_by_tag():
+    pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$sort": {"timestamp": -1}},
+        {"$group": {"_id": "$id", "tags": {"$first": "$tags"}}},
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "num": {"$sum": 1}}}
+    ]
+
+    return list(offers_collection.aggregate(pipeline))
+
+@router.get("/offers/")
+def get_offers():
+    offers = list(offers_collection.find())
+    return json.loads(json_util.dumps(offers))
+
+
+# graphical analysis functions and endpoint
+
 # returns the total number of offers variation by month in the last 12 months
-@router.get("/total_number_of_offers_by_month")
+# @router.get("/total_number_of_offers_by_month")
 def get_total_number_of_offers_by_month():
     now = datetime.now()
     results = []
@@ -73,7 +94,7 @@ def get_total_number_of_offers_by_month():
     return results
 
 # returns the total number of offers variation by day in the last 30 days
-@router.get("/total_number_of_offers_by_day")
+# @router.get("/total_number_of_offers_by_day")
 def get_total_number_of_offers_by_day():
     now = datetime.now()
     results = []
@@ -99,9 +120,8 @@ def get_total_number_of_offers_by_day():
     
     return results
 
-# TODO
 # returns the total number of offers variation by hour in the last 24 hours
-@router.get("/total_number_of_offers_by_hour")
+# @router.get("/total_number_of_offers_by_hour")
 def get_total_number_of_offers_by_hour():
     now = datetime.now()
     results = []
@@ -127,21 +147,8 @@ def get_total_number_of_offers_by_hour():
 
     return results
 
-# returns the number of offers by tag
-@router.get("/number_of_offers_by_tag")
-def get_offers_by_tag():
-    pipeline = [
-        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
-        {"$sort": {"timestamp": -1}},
-        {"$group": {"_id": "$id", "tags": {"$first": "$tags"}}},
-        {"$unwind": "$tags"},
-        {"$group": {"_id": "$tags", "num": {"$sum": 1}}}
-    ]
-
-    return list(offers_collection.aggregate(pipeline))
-
 # returns the number of new offers by month in the last 12 months
-@router.get("/new_offers_by_month")
+# @router.get("/new_offers_by_month")
 def get_new_offers_by_month():
     now = datetime.now()
     pipeline = [
@@ -169,7 +176,7 @@ def get_new_offers_by_month():
     return json.loads(json_util.dumps(results))
 
 # returns the number of new offers by day in the last 30 days
-@router.get("/new_offers_by_day")
+# @router.get("/new_offers_by_day")
 def get_new_offers_by_day():
     now = datetime.now()
     pipeline = [
@@ -197,7 +204,7 @@ def get_new_offers_by_day():
     return json.loads(json_util.dumps(results))
 
 # returns the number of new offers by hour in the last 24 hours
-@router.get("/new_offers_by_hour")
+# @router.get("/new_offers_by_hour")
 def get_new_offers_by_hour():
     now = datetime.now()
     pipeline = [
@@ -224,7 +231,18 @@ def get_new_offers_by_hour():
 
     return json.loads(json_util.dumps(results))
 
-@router.get("/offers/")
-def get_offers():
-    offers = list(offers_collection.find())
-    return json.loads(json_util.dumps(offers))
+function_map = {
+    ('total_offers', 'month'): get_total_number_of_offers_by_month,
+    ('total_offers', 'day'): get_total_number_of_offers_by_day,
+    ('total_offers', 'hour'): get_total_number_of_offers_by_hour,
+    ('new_offers', 'month'): get_new_offers_by_month,
+    ('new_offers', 'day'): get_new_offers_by_day,
+    ('new_offers', 'hour'): get_new_offers_by_hour,
+}
+
+@router.get("/analysis/")
+def get_analysis_data(x: str, y: str):
+    try:
+        return function_map[(x, y)]()
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Invalid x or y value")
