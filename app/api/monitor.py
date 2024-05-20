@@ -11,6 +11,12 @@ router = APIRouter()
 
 # payments endpoints
 
+# returns all payments
+@router.get("/payments/")
+def get_payments():
+    payments = list(payments_collection.find())
+    return json.loads(json_util.dumps(payments))
+
 # returns the number of payments by nationality
 @router.get("/number_of_payments_by_nationality")
 def get_payments_by_nationality():
@@ -20,19 +26,131 @@ def get_payments_by_nationality():
 
     return list(payments_collection.aggregate(pipeline))
 
-# returns all payments
-@router.get("/payments/")
-def get_payments():
-    payments = list(payments_collection.find())
-    return json.loads(json_util.dumps(payments))
+# returns the acumulated profit since the beginning of the month
+@router.get("/profit_this_month")
+def get_profit_this_month():
+    now = datetime.now()
+    pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(now.year, now.month, 1)}}},
+        {"$group": {"_id": None, "profit": {"$sum": "$amount"}}},
+        {"$project": {"_id": 0}}
+    ]
 
+    results = list(payments_collection.aggregate(pipeline))
+    return json.loads(json_util.dumps(results))
+
+# returns the comparison of the profit of the current month with the previous month
+@router.get("/profit_comparison_with_previous_month")
+def get_profit_comparison_with_previous_month():
+    now = datetime.now()
+    last_month = now - relativedelta(months=1)
+
+    pipeline_this_month = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(now.year, now.month, 1)}}},
+        {"$group": {"_id": None, "profit": {"$sum": "$amount"}}}
+    ]
+
+    pipeline_last_month = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(last_month.year, last_month.month, 1), "$lt": datetime(now.year, now.month, 1)}}},
+        {"$group": {"_id": None, "profit": {"$sum": "$amount"}}}
+    ]
+
+    result_this_month = list(payments_collection.aggregate(pipeline_this_month))
+    result_last_month = list(payments_collection.aggregate(pipeline_last_month))
+
+    profit_this_month = result_this_month[0]['profit'] if result_this_month else 0
+    profit_last_month = result_last_month[0]['profit'] if result_last_month else 0
+
+    return profit_this_month - profit_last_month
+
+# returns the number of sales since the beginning of the month
+@router.get("/number_of_sales_this_month")
+def get_number_of_sales_this_month():
+    now = datetime.now()
+    pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(now.year, now.month, 1)}}},
+        {"$count": "total"}
+    ]
+
+    results = payments_collection.aggregate(pipeline)
+    return json.loads(json_util.dumps(results))
+
+# returns the comparison of the number of sales of the current month with the previous month
+@router.get("/number_of_sales_comparison_with_previous_month")
+def get_number_of_sales_comparison_with_previous_month():
+    now = datetime.now()
+    last_month = now - relativedelta(months=1)
+
+    pipeline_this_month = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(now.year, now.month, 1)}}},
+        {"$count": "total"}
+    ]
+
+    pipeline_last_month = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(last_month.year, last_month.month, 1), "$lt": datetime(now.year, now.month, 1)}}},
+        {"$count": "total"}
+    ]
+
+    result_this_month = list(payments_collection.aggregate(pipeline_this_month))
+    result_last_month = list(payments_collection.aggregate(pipeline_last_month))
+
+    count_this_month = result_this_month[0]['total'] if result_this_month else 0
+    count_last_month = result_last_month[0]['total'] if result_last_month else 0
+
+    return count_this_month - count_last_month
+
+# returns the 2 more consumed tags of offers
+@router.get("/most_consumed_tags")
+def get_most_consumed_tags():
+    pipeline = [
+        {"$lookup": {
+            "from": "offers",
+            "localField": "offer_id",
+            "foreignField": "id",
+            "as": "offer"
+        }},
+        {"$unwind": "$offer"},
+        {"$unwind": "$offer.tags"},
+        {"$group": {"_id": "$offer.tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 2}
+    ]
+
+    results = list(payments_collection.aggregate(pipeline))
+
+    return [doc['_id'] for doc in results]
+
+# returns the 5 last payments
+@router.get("/last_payments")
+def get_last_payments():
+    pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
+        {"$sort": {"timestamp": -1}},
+        {"$limit": 5}
+    ]
+
+    results = list(payments_collection.aggregate(pipeline))
+    return json.loads(json_util.dumps(results))
 
 # offers endpoints
+
+# returns all offers
+@router.get("/offers/")
+def get_offers():
+    offers = list(offers_collection.find())
+    return json.loads(json_util.dumps(offers))
 
 # returns the total number of offers
 @router.get("/total_number_of_offers")
 def get_total_number_of_offers():
     pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
         {"$group": {"_id": "$id", "timestamp": {"$min": "$timestamp"}}},
         {"$count": "total"}
     ]
@@ -40,30 +158,19 @@ def get_total_number_of_offers():
     results = list(offers_collection.aggregate(pipeline))
     return json.loads(json_util.dumps(results))
 
-# returns the variation of the total number of offers compared to the previous month
-@router.get("/total_number_of_offers_variation_since_30_days_ago")
-async def get_total_number_of_offers_variation_since_30_days_ago():
+# returns the number of new offers since the beginning of this month
+@router.get("/new_offers_this_month")
+def get_new_offers_this_month():
     now = datetime.now()
-    thirty_days_ago = now - timedelta(days=30)
-
-    pipeline_today = [
+    pipeline = [
+        {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
         {"$group": {"_id": "$id", "timestamp": {"$min": "$timestamp"}}},
+        {"$match": {"timestamp": {"$gte": datetime(now.year, now.month, 1)}}},
         {"$count": "total"}
     ]
 
-    pipeline_30_days_ago = [
-        {"$match": {"timestamp": {"$lt": thirty_days_ago}}},
-        {"$group": {"_id": "$id", "timestamp": {"$min": "$timestamp"}}},
-        {"$count": "total"}
-    ]
-
-    result_today = list(offers_collection.aggregate(pipeline_today))
-    result_last_month = list(offers_collection.aggregate(pipeline_30_days_ago))
-
-    count_today = result_today[0]['total'] if result_today else 0
-    count_last_month = result_last_month[0]['total'] if result_last_month else 0
-
-    return count_today - count_last_month
+    results = offers_collection.aggregate(pipeline)
+    return json.loads(json_util.dumps(results))
 
 # returns the number of offers by tag
 @router.get("/number_of_offers_by_tag")
@@ -77,12 +184,6 @@ def get_offers_by_tag():
     ]
 
     return list(offers_collection.aggregate(pipeline))
-
-# returns all offers
-@router.get("/offers/")
-def get_offers():
-    offers = list(offers_collection.find())
-    return json.loads(json_util.dumps(offers))
 
 
 # graphical analysis functions and endpoint of offers and payments
@@ -409,18 +510,18 @@ def get_profit_by_hour():
     return json.loads(json_util.dumps(results))
 
 function_map = {
-    ('total_offers', 'month'): get_total_number_of_offers_by_month,
-    ('total_offers', 'day'): get_total_number_of_offers_by_day,
-    ('total_offers', 'hour'): get_total_number_of_offers_by_hour,
-    ('new_offers', 'month'): get_new_offers_by_month,
-    ('new_offers', 'day'): get_new_offers_by_day,
-    ('new_offers', 'hour'): get_new_offers_by_hour,
-    ('num_payments', 'month'): get_num_payments_by_month,
-    ('num_payments', 'day'): get_num_payments_by_day,
-    ('num_payments', 'hour'): get_num_payments_by_hour,
-    ('profit', 'month'): get_profit_by_month,
-    ('profit', 'day'): get_profit_by_day,
-    ('profit', 'hour'): get_profit_by_hour
+    ('month', 'total_offers'): get_total_number_of_offers_by_month,
+    ('day', 'total_offers'): get_total_number_of_offers_by_day,
+    ('hour', 'total_offers'): get_total_number_of_offers_by_hour,
+    ('month', 'new_offers'): get_new_offers_by_month,
+    ('day', 'new_offers'): get_new_offers_by_day,
+    ('hour', 'new_offers'): get_new_offers_by_hour,
+    ('month', 'num_payments'): get_num_payments_by_month,
+    ('day', 'num_payments'): get_num_payments_by_day,
+    ('hour', 'num_payments'): get_num_payments_by_hour,
+    ('month', 'profit'): get_profit_by_month,
+    ('day', 'profit'): get_profit_by_day,
+    ('hour', 'profit'): get_profit_by_hour
 }
 
 @router.get("/analysis/")
