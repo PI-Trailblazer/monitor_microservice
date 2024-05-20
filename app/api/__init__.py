@@ -1,8 +1,7 @@
 from fastapi import APIRouter
 
-from . import offer
+from . import monitor
 
 router = APIRouter()
 
-router.include_router(offer.router, prefix="/offer", tags=["offer"])
-# router.include_router(payment.router, prefix="/payment", tags=["payment"])
+router.include_router(monitor.router, prefix="/monitor", tags=["monitor"])
