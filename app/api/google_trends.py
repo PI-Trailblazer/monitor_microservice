@@ -16,8 +16,8 @@ def get_trends(seacrh_term: str):
     return results
 
 
-def get_difference_between_recent_and_old_values():
-    trends = get_trends()
+def get_difference_between_recent_and_old_values(search_term: str):
+    trends = get_trends(search_term)
     values = trends["interest_over_time"]["timeline_data"]
 
     recent_value = values[-1]["values"][0]["extracted_value"]
