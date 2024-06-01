@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime, timedelta
 
 from bson import json_util
@@ -6,6 +7,8 @@ from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, HTTPException, Security
 
 from app.api import auth_deps
+from app.api.google_trends import (get_slope_and_b_of_trend_last_3_days,
+                                   get_slope_and_b_of_trend_last_3_months)
 from app.db.init_db import offers_collection, payments_collection
 
 router = APIRouter()
@@ -14,13 +17,13 @@ router = APIRouter()
 
 # returns all payments
 @router.get("/payments")
-def get_payments():
+def get_payments(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     payments = list(payments_collection.find())
     return json.loads(json_util.dumps(payments))
 
 # returns the number of payments by nationality
 @router.get("/number_of_payments_by_nationality")
-def get_payments_by_nationality():
+def get_payments_by_nationality(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     pipeline = [
         {"$group": {"_id": "$nationality", "num": {"$sum": 1}}}
     ]
@@ -29,7 +32,7 @@ def get_payments_by_nationality():
 
 # returns the acumulated profit since the beginning of the month
 @router.get("/profit_this_month")
-def get_profit_this_month():
+def get_profit_this_month(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     now = datetime.now()
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
@@ -43,7 +46,7 @@ def get_profit_this_month():
 
 # returns the comparison of the profit of the current month with the previous month
 @router.get("/profit_comparison_with_previous_month")
-def get_profit_comparison_with_previous_month():
+def get_profit_comparison_with_previous_month(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     now = datetime.now()
     last_month = now - relativedelta(months=1)
 
@@ -69,7 +72,7 @@ def get_profit_comparison_with_previous_month():
 
 # returns the number of sales since the beginning of the month
 @router.get("/number_of_sales_this_month")
-def get_number_of_sales_this_month():
+def get_number_of_sales_this_month(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     now = datetime.now()
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
@@ -82,7 +85,7 @@ def get_number_of_sales_this_month():
 
 # returns the comparison of the number of sales of the current month with the previous month
 @router.get("/number_of_sales_comparison_with_previous_month")
-def get_number_of_sales_comparison_with_previous_month():
+def get_number_of_sales_comparison_with_previous_month(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     now = datetime.now()
     last_month = now - relativedelta(months=1)
 
@@ -108,7 +111,7 @@ def get_number_of_sales_comparison_with_previous_month():
 
 # returns the 2 more consumed tags of offers
 @router.get("/most_consumed_tags")
-def get_most_consumed_tags():
+def get_most_consumed_tags(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     pipeline = [
         {"$lookup": {
             "from": "offers",
@@ -129,7 +132,7 @@ def get_most_consumed_tags():
 
 # returns the 5 last payments
 @router.get("/last_payments")
-def get_last_payments():
+def get_last_payments(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
         {"$sort": {"timestamp": -1}},
@@ -143,13 +146,13 @@ def get_last_payments():
 
 # returns all offers
 @router.get("/offers")
-def get_offers():
+def get_offers(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     offers = list(offers_collection.find())
     return json.loads(json_util.dumps(offers))
 
 # returns the total number of offers
 @router.get("/total_number_of_offers")
-def get_total_number_of_offers():
+def get_total_number_of_offers(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
         {"$group": {"_id": "$id", "timestamp": {"$min": "$timestamp"}}},
@@ -161,7 +164,7 @@ def get_total_number_of_offers():
 
 # returns the number of new offers since the beginning of this month
 @router.get("/new_offers_this_month")
-def get_new_offers_this_month():
+def get_new_offers_this_month(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     now = datetime.now()
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
@@ -175,7 +178,7 @@ def get_new_offers_this_month():
 
 # returns the number of offers by tag
 @router.get("/number_of_offers_by_tag")
-def get_offers_by_tag():
+def get_offers_by_tag(payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     pipeline = [
         {"$addFields": {"timestamp": {"$toDate": "$timestamp"}}},
         {"$sort": {"timestamp": -1}},
@@ -504,7 +507,7 @@ def get_profit_by_hour():
 
     return json.loads(json_util.dumps(results))
 
-function_map = {
+function_map_analysis = {
     ('month', 'total_offers'): get_total_number_of_offers_by_month,
     ('day', 'total_offers'): get_total_number_of_offers_by_day,
     ('hour', 'total_offers'): get_total_number_of_offers_by_hour,
@@ -520,8 +523,54 @@ function_map = {
 }
 
 @router.get("/analysis")
-def get_analysis_data(x: str, y: str):
+def get_analysis_data(x: str, y: str, payload=Security(auth_deps.verify_token, scopes=["dmo"])):
     try:
-        return function_map[(x, y)]()
+        return function_map_analysis[(x, y)]()
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Invalid x or y value")
+    
+
+# returns predicted values
+def get_prediction(our_data_function, dates, trend_avg_slope, trend_avg_b):
+    results = our_data_function()
+    values = [result['count'] for result in results]
+
+    # Calculate the 2 last slopes
+    slope1 = values[-2] - values[-3]
+    slope2 = values[-1] - values[-2]
+
+    b1 = values[-3]
+    b2 = - slope2 + values[-2]
+
+    # Calculate the average slope and b
+    average_slope = (slope1 + slope2) / 2
+    average_b = (b1 + b2) / 2
+
+    # Predict the number of payments for the next 3 months
+    predicted_values = []
+
+    for i in range(3, 6):
+        if (trend_avg_slope * i + trend_avg_b) > 0:
+            predict = (average_slope * i + average_b) + math.log(trend_avg_slope * i + trend_avg_b)
+        else:
+            predict = (average_slope * i + average_b) - math.log(abs(trend_avg_slope * i + trend_avg_b))
+        predicted_values.append(predict)
+    
+    results = [{"date": date, "count": value} for date, value in zip(dates, predicted_values)]
+
+    return json.loads(json_util.dumps(results))
+
+@router.get("/prediction")
+def get_prediction_data(x: str, y: str, payload=Security(auth_deps.verify_token, scopes=["dmo"])):
+    try:
+        our_data_function = function_map_analysis[(x, y)]
+        if x == "month":
+            dates = [(datetime.now() + relativedelta(months=i)).strftime("%m/%Y") for i in range(1, 4)]            
+            trend_avg_slope, trend_avg_b = get_slope_and_b_of_trend_last_3_months("Aveiro")
+        else:
+            dates = [(datetime.now() + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(1, 4)]
+            trend_avg_slope, trend_avg_b = get_slope_and_b_of_trend_last_3_days("Aveiro")
+        
+        return get_prediction(our_data_function, dates, trend_avg_slope, trend_avg_b)
     except KeyError:
         raise HTTPException(status_code=400, detail="Invalid x or y value")

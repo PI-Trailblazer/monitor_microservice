@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime, timedelta
 
 from bson import json_util
@@ -6,6 +7,8 @@ from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, HTTPException, Security
 
 from app.api import auth_deps
+from app.api.google_trends import (get_slope_and_b_of_trend_last_3_days,
+                                   get_slope_and_b_of_trend_last_3_months)
 from app.db.init_db import offers_collection, payments_collection
 
 router = APIRouter()
@@ -459,5 +462,53 @@ def get_analysis_data(x: str, y: str, payload=Security(auth_deps.verify_token, s
         uid = payload.sub
         function_to_call = function_map[(x, y)]
         return function_to_call(uid)
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Invalid x or y value")
+    
+
+# returns predicted values
+def get_prediction(our_data_function, dates, trend_avg_slope, trend_avg_b):
+    results = our_data_function()
+    values = [result['count'] for result in results]
+
+    # Calculate the 2 last slopes
+    slope1 = values[-2] - values[-3]
+    slope2 = values[-1] - values[-2]
+
+    b1 = values[-3]
+    b2 = - slope2 + values[-2]
+
+    # Calculate the average slope and b
+    average_slope = (slope1 + slope2) / 2
+    average_b = (b1 + b2) / 2
+
+    # Predict the number of payments for the next 3 months
+    predicted_values = []
+
+    for i in range(3, 6):
+        if (trend_avg_slope * i + trend_avg_b) > 0:
+            predict = (average_slope * i + average_b) + math.log(trend_avg_slope * i + trend_avg_b)
+        else:
+            predict = (average_slope * i + average_b) - math.log(abs(trend_avg_slope * i + trend_avg_b))
+        predicted_values.append(predict)
+    
+    results = [{"date": date, "count": value} for date, value in zip(dates, predicted_values)]
+
+    return json.loads(json_util.dumps(results))
+
+@router.get("/prediction")
+def get_prediction_data(x: str, y: str, payload=Security(auth_deps.verify_token, scopes=["provider"])):
+    try:
+        uid = payload.sub
+        function_to_call = function_map[(x, y)]
+        our_data_function = lambda: function_to_call(uid)
+        if x == "month":
+            dates = [(datetime.now() + relativedelta(months=i)).strftime("%m/%Y") for i in range(1, 4)]            
+            trend_avg_slope, trend_avg_b = get_slope_and_b_of_trend_last_3_months("Aveiro")     # needs to be changed (or not)
+        else:
+            dates = [(datetime.now() + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(1, 4)]
+            trend_avg_slope, trend_avg_b = get_slope_and_b_of_trend_last_3_days("Aveiro")       # needs to be changed (or not)
+        
+        return get_prediction(our_data_function, dates, trend_avg_slope, trend_avg_b)
     except KeyError:
         raise HTTPException(status_code=400, detail="Invalid x or y value")
